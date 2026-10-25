@@ -1,21 +1,31 @@
 
-name: Angular CI Pipeline
+name: Angular SSR CI CD Pipeline
 
 on:
   push:
     branches:
       - main
+
   pull_request:
     branches:
       - main
+
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: angular-ssr-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  AZURE_WEBAPP_NAME: YOUR_AZURE_WEBAPP_NAME
+
 jobs:
-  build:
-    name: Install and Build Angular
+  ci:
+    name: Test and Build Angular SSR
     runs-on: ubuntu-latest
 
     steps:
@@ -25,11 +35,61 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
+
+      - name: Setup npm
+        run: npm install --global npm@11.13.0
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Angular application
+      - name: Run unit tests
+        run: npm test -- --watch=false
+
+      - name: Build production application
         run: npm run build
+
+      - name: Verify SSR output
+        run: test -f dist/angularDemo/server/server.mjs
+
+      - name: Package application
+        run: |
+          mkdir -p release
+          cp -r dist release/dist
+          cp package.json package-lock.json release/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: angular-ssr-release
+          path: release/
+          retention-days: 3
+
+  cd:
+    name: Deploy to Azure App Service
+    runs-on: ubuntu-latest
+    needs: ci
+
+    # Never deploy pull requests or non-main branches.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+
+    environment:
+      name: production
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: angular-ssr-release
+          path: release
+
+      - name: Deploy to AWS
+        uses: aws/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: release
+
+      - name: Deployment complete
+        run: echo "Deployment action completed."
