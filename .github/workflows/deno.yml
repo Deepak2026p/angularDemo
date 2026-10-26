@@ -20,7 +20,6 @@ concurrency:
 
 env:
   NODE_VERSION: '22'
-  AZURE_WEBAPP_NAME: YOUR_AZURE_WEBAPP_NAME
 
 jobs:
   ci:
@@ -37,17 +36,22 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
+      - name: Setup npm version
+        run: npm install --global npm@11.13.0
+
       - name: Install dependencies
         run: npm ci
 
       - name: Run unit tests
         run: npm test -- --watch=false
 
-      - name: Build production application
-        run: ng serve
+      - name: Build production SSR application
+        run: npm run build
 
-      - name: Verify SSR output
-        run: test -f dist/angularDemo/server/server.mjs
+      - name: Verify SSR server output
+        run: |
+          test -f dist/angularDemo/server/server.mjs
+          echo "SSR server output verified."
 
       - name: Package application
         run: |
@@ -63,7 +67,7 @@ jobs:
           retention-days: 3
 
   cd:
-    name: Deploy to Aws App Service
+    name: Simulate Deployment
     runs-on: ubuntu-latest
     needs: ci
 
@@ -79,12 +83,15 @@ jobs:
           name: angular-ssr-release
           path: release
 
-      - name: Deploy to AWS
-        uses: aws/webapps-deploy@v3
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: release
+      - name: Verify deployment package
+        run: |
+          test -f release/package.json
+          test -f release/package-lock.json
+          test -f release/dist/angularDemo/server/server.mjs
+          echo "Deployment package verified successfully."
 
-      - name: Deployment complete
-        run: echo "Deployment action completed."
+      - name: Deployment simulation complete
+        run: |
+          echo "CI passed."
+          echo "CD simulation passed."
+          echo "No cloud account is required for this test."
